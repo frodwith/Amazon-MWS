@@ -12,9 +12,10 @@ our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 sub identity { shift }
 
 my %from_map = (
-    'xs:string'   => \&identity,
-    'xs:boolean'  => sub { shift eq 'true' },
-    'xs:datetime' => sub {
+    'string' => \&identity,
+    'boolean' => sub { lc(shift) eq 'true' },
+    'nonNegativeInteger' => \&identity, 
+    'datetime' => sub {
         my $str    = shift;
         my $parser = qr/^
             (\d{4})- # year
@@ -48,9 +49,14 @@ sub from_amazon {
 }
 
 my %to_map = (
-    'xs:string'   => \&identity,
-    'xs:boolean'  => sub { $_[0] ? 'true' : 'false' },
-    'xs:datetime' => sub { 
+    'string'   => \&identity,
+    'boolean'  => sub { $_[0] ? 'true' : 'false' },
+    'nonNegativeInteger' => sub {
+        my $int = int(shift);
+        $int = 1 unless $int > 0;
+        return $int;
+    },
+    'datetime' => sub { 
         my $dt     = shift;
         my $tz     = $dt->time_zone;
         my $offset = $tz->offset_for_datetime($dt);
@@ -102,15 +108,15 @@ Converts from a string supplied by MWS to a perl datatype.
 Should be either a reference to a scalar containing the data to send,
 a string containing the filename of the file to read from, or a filehandle.
 
-=head2 xs:string
+=head2 string
 
 A plain perl string.
 
-=head2 xs:boolean
+=head2 boolean
 
 When sent by amazon, true is converted to 1 and false to the empty string.
 When sent to amazon, any true value or false value will be properly converted.
 
-=head2 xs:datetime
+=head2 datetime
 
 Converted to and from DateTime objects.
