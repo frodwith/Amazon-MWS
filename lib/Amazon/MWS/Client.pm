@@ -13,7 +13,8 @@ use Digest::MD5 qw(md5_base64);
 use Amazon::MWS::TypeMap qw(:all);
 use Readonly;
 
-Readonly my $baseEx => 'Amazon::MWS::Client::Exception';
+my $baseEx;
+BEGIN { Readonly $baseEx => 'Amazon::MWS::Client::Exception' }
 
 use Exception::Class (
     $baseEx,
@@ -60,6 +61,37 @@ sub convert_FeedSubmissionInfo {
     }
 }
 
+sub convert_ReportRequestInfo {
+    my $root = shift; 
+    force_array($root, 'ReportRequestInfo');
+
+    foreach my $info (@{ $root->{ReportRequestInfo} }) {
+        convert($info, StartDate     => 'datetime');
+        convert($info, EndDate       => 'datetime');
+        convert($info, Scheduled     => 'boolean');
+        convert($info, SubmittedDate => 'datetime');
+    }
+}
+
+sub convert_ReportInfo {
+    my $root = shift;
+    force_array($root, 'ReportInfo');
+
+    foreach my $info (@{ $root->{ReportInfo} }) {
+        convert($info, AvailableDate => 'datetime');
+        convert($info, Acknowledged  => 'boolean');
+    }
+}
+
+sub convert_ReportSchedule {
+    my $root = shift;
+    force_array($root, 'ReportSchedule');
+
+    foreach my $info (@{ $root->{ReportSchedule} }) {
+        convert($info, ScheduledDate => 'datetime');
+    }
+}
+
 sub slurp_kwargs { ref $_[0] eq 'HASH' ? shift : { @_ } }
 
 sub define_api_method {
@@ -74,7 +106,7 @@ sub define_api_method {
         my %form = (Action => $method_name);
 
         foreach my $name (keys %$params) {
-            $param = $params->{$name};
+            my $param = $params->{$name};
 
             unless (exists $args->{$name}) {
                 arg_missing(name => $name) if $param->{required};
@@ -114,7 +146,7 @@ sub define_api_method {
             $request->method('POST'); 
             $request->content($body);
             $request->header('Content-MD5' => md5_base64($body));
-            $request->content_type(
+            $request->content_type($args->{content_type});
         }
         else {
             $request->method('GET');
@@ -141,7 +173,7 @@ sub define_api_method {
 
         if ($res_hash->{ErrorResponse}) {
             force_array($res_hash, 'Error');
-            error_response(errors => $res_hash{Errors}, xml => $response);
+            error_response(errors => $res_hash->{Errors}, xml => $response);
         }
 
         my $root = $res_hash->{$method_name . 'Response'}
@@ -157,10 +189,10 @@ sub define_api_method {
 
 sub new {
     my $class = shift;
-    my $opt   = slurp_kwargs(@_);
+    my $opts  = slurp_kwargs(@_);
     my $self  = register $class;
 
-    my $attr = $opt->{agent_attributes};
+    my $attr = $opts->{agent_attributes};
     $attr->{language} = 'Perl';
 
     my $attr_str = join ';', map { "$_=$attr->{$_}" } keys %$attr;
@@ -259,18 +291,171 @@ define_api_method RequestReport =>
         ReportType => {
             type     => 'string',
             required => 1,
-        }
+        },
         StartDate => { type => 'datetime' },
         EndDate   => { type => 'datetime' },
     },
     respond => sub {
-        my $root = $_[0]->{RequestReportInfo};
+        my $root = shift;
+        convert_ReportRequestInfo($root);
+        return $root;
+    };
 
-        convert($root, StartDate     => 'datetime');
-        convert($root, EndDate       => 'datetime');
-        convert($root, Scheduled     => 'boolean');
-        convert($root, SubmittedDate => 'datetime');
+define_api_method GetReportRequestList =>
+    parameters => {
+        ReportRequestIdList        => { type => 'IdList' },
+        ReportTypeList             => { type => 'TypeList' },
+        ReportProcessingStatusList => { type => 'StatusList' },
+        MaxCount                   => { type => 'nonNegativeInteger' },
+        RequestedFromDate          => { type => 'datetime' },
+        RequestedToDate            => { type => 'datetime' },
+    },
+    respond => sub {
+        my $root = shift;
+        convert($root, HasNext => 'boolean');
+        convert_ReportRequestInfo($root);
+        return $root;
+    };
 
+define_api_method GetReportRequestListByNextToken =>
+    parameters => {
+        NextToken => { 
+            required => 1,
+            type      => 'string',
+        },
+    },
+    respond => sub {
+        my $root = shift;
+        convert($root, HasNext => 'boolean');
+        convert_ReportRequestInfo($root);
+        return $root;
+    };
+
+define_api_method GetReportRequestList =>
+    parameters => {
+        ReportTypeList             => { type => 'TypeList' },
+        ReportProcessingStatusList => { type => 'StatusList' },
+        RequestedFromDate          => { type => 'datetime' },
+        RequestedToDate            => { type => 'datetime' },
+    },
+    respond => sub { $_[0]->{Count} };
+
+define_api_method CancelReportRequests =>
+    parameters => {
+        ReportRequestIdList        => { type => 'IdList' },
+        ReportTypeList             => { type => 'TypeList' },
+        ReportProcessingStatusList => { type => 'StatusList' },
+        RequestedFromDate          => { type => 'datetime' },
+        RequestedToDate            => { type => 'datetime' },
+    },
+    respond => sub {
+        my $root = shift;
+        convert_ReportRequestInfo($root);
+        return $root;
+    };
+
+define_api_method GetReportList =>
+    parameters => {
+        MaxCount            => { type => 'nonNegativeInteger' },
+        ReportTypeList      => { type => 'TypeList' },
+        Acknowledged        => { type => 'boolean' },
+        AvailableFromDate   => { type => 'datetime' },
+        AvailableToDate     => { type => 'datetime' },
+        ReportRequestIdList => { type => 'IdList' },
+    },
+    respond => sub {
+        my $root = shift;
+        convert($root, HasNext => 'boolean');
+        convert_ReportInfo($root);
+        return $root;
+    };
+
+define_api_method GetReportListByNextToken =>
+    parameters => {
+        NextToken => {
+            type     => 'string',
+            required => 1,
+        },
+    },
+    respond => sub {
+        my $root = shift;
+        convert($root, HasNext => 'boolean');
+        convert_ReportInfo($root);
+        return $root;
+    };
+
+define_api_method GetReportCount =>
+    parameters => {
+        ReportTypeList      => { type => 'TypeList' },
+        Acknowledged        => { type => 'boolean' },
+        AvailableFromDate   => { type => 'datetime' },
+        AvailableToDate     => { type => 'datetime' },
+    },
+    respond => sub { $_[0]->{Count} };
+
+define_api_method GetReport =>
+    raw_body   => 1,
+    parameters => {
+        ReportId => { 
+            type     => 'nonNegativeInteger',
+            required => 1,
+        }
+    };
+
+define_api_method ManageReportSchedule =>
+    parameters => {
+        ReportType    => { type => 'string' },
+        Schedule      => { type => 'string' },
+        ScheduledDate => { type => 'datetime' },
+    },
+    respond => sub {
+        my $root = shift;
+        convert($root, ScheduledDate => 'datetime');
+        return $root;
+    };
+
+define_api_method GetReportScheduleList =>
+    parameters => {
+        ReportTypeList => { type => 'ReportType' },
+    },
+    respond => sub {
+        my $root = shift;
+        convert($root, HasNext => 'boolean');
+        convert_ReportSchedule($root);
+        return $root;
+    };
+
+define_api_method GetReportScheduleListByNextToken =>
+    parameters => {
+        NextToken => {
+            type     => 'string',
+            required => 1,
+        },
+    },
+    respond => sub {
+        my $root = shift;
+        convert($root, HasNext => 'boolean');
+        convert_ReportSchedule($root);
+        return $root;
+    };
+
+define_api_method GetReportScheduleCount =>
+    parameters => {
+        ReportTypeList => { type => 'ReportType' },
+    },
+    respond => sub { $_[0]->{Count} };
+
+define_api_method UpdateReportAcknowledgements =>
+    parameters => {
+        ReportIdList => { 
+            type     => 'IdList',
+            required => 1,
+        },
+        Acknowledged => { type => 'boolean' },
+    },
+    respond => sub {
+        my $root = shift;
+        convert_ReportInfo($root);
         return $root;
     };
 
@@ -339,24 +524,49 @@ L<Amazon::MWS::TypeMap>.  Note that where the documentation calls for a
 
 =head2 SubmitFeed
 
-=head2 GetFeedSubmissionList
+Requires an additional 'content_type' argument specifying what content type
+the HTTP-BODY is.
 
-NextToken and HasNext are returned as normal.  FeedSubmissionInfo is an
-arrayref containing the other keys for each feed returned.
+=head2 GetFeedSubmissionList
 
 =head2 GetFeedSubmissionListByNextToken
 
-FeedSubmissionInfo as in GetFeedSubmissionList.
-
 =head2 GetFeedSubmissionCount
 
-Returns the count as a simple scalar.
+Returns the count as a simple scalar (as do all methods ending with Count)
 
 =head2 CancelFeedSubmissions
-
-FeedSubmissionInfo as in GetFeedSubmissionList.
 
 =head2 GetFeedSubmissionResult
 
 The raw body of the response is returned.  Note: the response will not be
 checked for error codes.
+
+=head2 RequestReport
+
+The returned ReportRequest will be an arrayref for consistency with other
+methods, even though there will only ever be one element.
+
+=head2 GetReportRequestList
+
+=head2 GetReportRequestListByNextToken
+
+=head2 GetReportRequestCount
+
+=head2 CancelReportRequests
+
+=head2 GetReportList
+
+=head2 GetReportListByNextToken
+
+=head2 GetReportCount
+
+=head2 GetReport
+
+=head2 ManageReportSchedule
+
+=head2 GetReportScheduleList
+
+=head2 GetReportScheduleListByNextToken
+
+=head2 GetReportScheduleCount
