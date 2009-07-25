@@ -108,7 +108,7 @@ sub define_api_method {
         my $args = slurp_kwargs(@_);
         my $body;
         my %form = (
-            Action           => $method_name
+            Action           => $method_name,
             AWSAccessKeyId   => $self->access_key_id,
             Merchant         => $self->merchant_id,
             Marketplace      => $self->marketplace_id,
