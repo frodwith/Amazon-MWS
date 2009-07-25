@@ -6,12 +6,15 @@ use strict;
 our $VERSION = '0.1';
 
 use URI;
+use Readonly;
+use DateTime;
 use XML::Simple;
+use URI::Escape;
+use Digest::HMAC;
 use HTTP::Request;
 use Class::InsideOut qw(:std);
 use Digest::MD5 qw(md5_base64);
 use Amazon::MWS::TypeMap qw(:all);
-use Readonly;
 
 my $baseEx;
 BEGIN { Readonly $baseEx => 'Amazon::MWS::Client::Exception' }
@@ -40,7 +43,8 @@ use Exception::Class (
     },
 );
 
-private agent => my %agent;
+readonly agent    => my %agent;
+readonly endpoint => my %endpoint;
 
 sub force_array {
     my ($hash, $key) = @_;
@@ -103,7 +107,16 @@ sub define_api_method {
         my $self = shift;
         my $args = slurp_kwargs(@_);
         my $body;
-        my %form = (Action => $method_name);
+        my %form = (
+            Action           => $method_name
+            AWSAccessKeyId   => $self->access_key_id,
+            Merchant         => $self->merchant_id,
+            Marketplace      => $self->marketplace_id,
+            Version          => '2009-01-01',
+            SignatureVersion => 2,
+            SignatureMethod  => 'SHA1',
+            Timestamp        => to_amazon('datetime', DateTime->now),
+        );
 
         foreach my $name (keys %$params) {
             my $param = $params->{$name};
@@ -152,7 +165,7 @@ sub define_api_method {
             $request->method('GET');
         }
 
-        $self->set_auth_headers($request);
+        $self->sign_request($request);
         my $response = $self->agent->request($request);
 
         unless ($response->is_success) {
@@ -187,6 +200,27 @@ sub define_api_method {
     *$fqn = $method;
 }
 
+sub sign_request {
+    my ($self, $request) = @_;
+    my $uri = $request->uri;
+    my $params = $uri->query_form;
+    my $canonical = join '&', map {
+        my $param = uri_escape($_);
+        my $value = uri_escape($params->{$_});
+        "$param=$value";
+    } sort keys %$params;
+
+    my $string = $request->method . "\n"
+        . $request->header('Host') . "\n"
+        . $uri->abs . "\n"
+        . $canonical;
+
+    my $hmac = Digest::HMAC->new($self->secret_key, "Digest::SHA1");
+    $params->{Signature} = $hmac->b64digest($string);
+    $uri->query_form($params);
+    $request->uri($uri);
+}
+
 sub new {
     my $class = shift;
     my $opts  = slurp_kwargs(@_);
@@ -200,6 +234,7 @@ sub new {
     my $version  = $opts->{version}     || $VERSION;
 
     $agent{id $self} = LWP::UserAgent->new("$appname/$version ($attr_str)");
+    $endpoint{id $self} = $opts->{endpoint} || 'https://mws.amazonaws.com/';
 
     return $self;
 }
@@ -563,6 +598,8 @@ methods, even though there will only ever be one element.
 
 =head2 GetReport
 
+The raw body is returned.
+
 =head2 ManageReportSchedule
 
 =head2 GetReportScheduleList
@@ -570,3 +607,5 @@ methods, even though there will only ever be one element.
 =head2 GetReportScheduleListByNextToken
 
 =head2 GetReportScheduleCount
+
+=head2 UpdateReportAcknowledgements
