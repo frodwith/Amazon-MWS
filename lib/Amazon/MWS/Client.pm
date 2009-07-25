@@ -43,8 +43,12 @@ use Exception::Class (
     },
 );
 
-readonly agent    => my %agent;
-readonly endpoint => my %endpoint;
+readonly agent          => my %agent;
+readonly endpoint       => my %endpoint;
+readonly access_key_id  => my %access_key_id;
+readonly secret_key     => my %secret_key;
+readonly merchant_id    => my %merchant_id;
+readonly marketplace_id => my %marketplace_id;
 
 sub force_array {
     my ($hash, $key) = @_;
@@ -235,6 +239,18 @@ sub new {
 
     $agent{id $self} = LWP::UserAgent->new("$appname/$version ($attr_str)");
     $endpoint{id $self} = $opts->{endpoint} || 'https://mws.amazonaws.com/';
+
+    $access_key_id{id $self} = $opts->{access_key_id}
+        or die 'No access key id';
+
+    $secret_key{id $self} = $opts->{secret_key}
+        or die 'No secret key';
+
+    $merchant_id{id $self} = $opts->{merchant_id}
+        or die 'No merchant id';
+
+    $marketplace_id{id $self} = $opts->{marketplace_id}
+        or die 'No marketplace id';
 
     return $self;
 }
