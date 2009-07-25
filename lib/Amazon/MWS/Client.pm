@@ -10,8 +10,10 @@ use Readonly;
 use DateTime;
 use XML::Simple;
 use URI::Escape;
-use Digest::HMAC;
+use MIME::Base64;
+use Digest::HMAC_SHA1 qw(hmac_sha1);
 use HTTP::Request;
+use LWP::UserAgent;
 use Class::InsideOut qw(:std);
 use Digest::MD5 qw(md5_base64);
 use Amazon::MWS::TypeMap qw(:all);
@@ -33,7 +35,7 @@ use Exception::Class (
     },
     "${baseEx}::Response" => {
         isa    => $baseEx,
-        fields => [qw(errors response)],
+        fields => [qw(errors xml)],
         alias  => 'error_response',
     },
     "${baseEx}::BadChecksum" => {
@@ -52,12 +54,21 @@ readonly marketplace_id => my %marketplace_id;
 
 sub force_array {
     my ($hash, $key) = @_;
-    $hash->{$key} = [ $hash->{$key} ] unless ref $hash->{$key} eq 'ARRAY';
+    my $val = $hash->{$key};
+
+    if (!defined $val) {
+        $val = [];
+    }
+    elsif (ref $val ne 'ARRAY') {
+        $val = [ $val ];
+    }
+
+    $hash->{$key} = $val;
 }
 
 sub convert {
     my ($hash, $key, $type) = @_;
-    $hash->{key} = from_amazon($type, $hash->{key});
+    $hash->{$key} = from_amazon($type, $hash->{$key});
 }
 
 sub convert_FeedSubmissionInfo {
@@ -118,7 +129,7 @@ sub define_api_method {
             Marketplace      => $self->marketplace_id,
             Version          => '2009-01-01',
             SignatureVersion => 2,
-            SignatureMethod  => 'SHA1',
+            SignatureMethod  => 'HmacSHA1',
             Timestamp        => to_amazon('datetime', DateTime->now),
         );
 
@@ -171,6 +182,16 @@ sub define_api_method {
 
         $self->sign_request($request);
         my $response = $self->agent->request($request);
+        my $content  = $response->content;
+
+        my $xs = XML::Simple->new( KeepRoot => 1 );
+
+        if ($response->code == 400 || $response->code == 403) {
+            my $hash = $xs->xml_in($content);
+            my $root = $hash->{ErrorResponse};
+            force_array($root, 'Error');
+            error_response(errors => $root->{Error}, xml => $content);
+        }
 
         unless ($response->is_success) {
             transport_error(request => $request, response => $response);
@@ -178,22 +199,14 @@ sub define_api_method {
 
         if (my $md5 = $response->header('Content-MD5')) {
             bad_checksum(response => $response) 
-                unless ($md5 eq md5_base64($response->content));
+                unless ($md5 eq md5_base64($content));
         }
 
-        return $response->content if $spec->{raw_body};
+        return $content if $spec->{raw_body};
 
-        my $xs = XML::Simple->new(
-            KeepRoot => 1,
-        );
-        my $res_hash = $xs->xml_in($response);
+        my $hash = $xs->xml_in($content);
 
-        if ($res_hash->{ErrorResponse}) {
-            force_array($res_hash, 'Error');
-            error_response(errors => $res_hash->{Errors}, xml => $response);
-        }
-
-        my $root = $res_hash->{$method_name . 'Response'}
+        my $root = $hash->{$method_name . 'Response'}
             ->{$method_name . 'Result'};
 
         return $spec->{respond}->($root);
@@ -207,21 +220,21 @@ sub define_api_method {
 sub sign_request {
     my ($self, $request) = @_;
     my $uri = $request->uri;
-    my $params = $uri->query_form;
+    my %params = $uri->query_form;
     my $canonical = join '&', map {
         my $param = uri_escape($_);
-        my $value = uri_escape($params->{$_});
+        my $value = uri_escape($params{$_});
         "$param=$value";
-    } sort keys %$params;
+    } sort keys %params;
 
     my $string = $request->method . "\n"
-        . $request->header('Host') . "\n"
-        . $uri->abs . "\n"
+        . $uri->authority . "\n"
+        . $uri->path . "\n"
         . $canonical;
 
-    my $hmac = Digest::HMAC->new($self->secret_key, "Digest::SHA1");
-    $params->{Signature} = $hmac->b64digest($string);
-    $uri->query_form($params);
+    $params{Signature} = 
+        encode_base64(hmac_sha1($string, $self->secret_key), '');
+    $uri->query_form(\%params);
     $request->uri($uri);
 }
 
@@ -231,13 +244,14 @@ sub new {
     my $self  = register $class;
 
     my $attr = $opts->{agent_attributes};
-    $attr->{language} = 'Perl';
+    $attr->{Language} = 'Perl';
 
     my $attr_str = join ';', map { "$_=$attr->{$_}" } keys %$attr;
-    my $appname  = $opts->{application} || 'Amazon::MWS::Client';
-    my $version  = $opts->{version}     || $VERSION;
+    my $appname  = $opts->{Application} || 'Amazon::MWS::Client';
+    my $version  = $opts->{Version}     || $VERSION;
 
-    $agent{id $self} = LWP::UserAgent->new("$appname/$version ($attr_str)");
+    my $agent_string = "$appname/$version ($attr_str)";
+    $agent{id $self} = LWP::UserAgent->new(agent => $agent_string);
     $endpoint{id $self} = $opts->{endpoint} || 'https://mws.amazonaws.com/';
 
     $access_key_id{id $self} = $opts->{access_key_id}
@@ -382,7 +396,7 @@ define_api_method GetReportRequestListByNextToken =>
         return $root;
     };
 
-define_api_method GetReportRequestList =>
+define_api_method GetReportRequestCount =>
     parameters => {
         ReportTypeList             => { type => 'TypeList' },
         ReportProcessingStatusList => { type => 'StatusList' },
@@ -527,6 +541,42 @@ entire interface can be found at L<https://mws.amazon.com/docs/devGuide>.
 
 =head2 new
 
+Constructs a new client object.  Takes the following keyword arguments:
+
+=head3 agent_attributes
+
+An attributes you would like to add (besides language=Perl) to the user agent
+string, as a hashref.
+
+=head3 application
+
+The name of your application.  Defaults to 'Amazon::MWS::Client'
+
+=head3 version
+
+The version of your application.  Defaults to the current version of this
+module.
+
+=head3 endpoint
+
+Where MWS lives.  Defaults to 'https://mws.amazonaws.com/'.
+
+=head3 access_key_id
+
+Your AWS Access Key Id
+
+=head3 secret_key
+
+Your AWS Secret Access Key
+
+=head3 merchant_id
+
+Your Amazon Merchant ID
+
+=head3 marketplace_id
+
+The marketplace id for the calls being made by this object.
+
 =head1 EXCEPTIONS
 
 Any of the L<API METHODS> can throw the following exceptions
@@ -590,8 +640,7 @@ Returns the count as a simple scalar (as do all methods ending with Count)
 
 =head2 GetFeedSubmissionResult
 
-The raw body of the response is returned.  Note: the response will not be
-checked for error codes.
+The raw body of the response is returned.
 
 =head2 RequestReport
 

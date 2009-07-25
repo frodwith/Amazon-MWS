@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use DateTime;
+use DateTime::Format::ISO8601;
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(from_amazon to_amazon);
@@ -16,31 +17,8 @@ my %from_map = (
     'boolean' => sub { lc(shift) eq 'true' },
     'nonNegativeInteger' => \&identity, 
     'datetime' => sub {
-        my $str    = shift;
-        my $parser = qr/^
-            (\d{4})- # year
-            (\d\d)-  # month
-            (\d\d)   # day
-            T
-            (\d\d):  # hour
-            (\d\d):  # minute
-            (\d\d)   # second
-            ([+-])   # sign on timezone offset
-            (\d\d):  # offset in hours
-            (\d\d)   # offset in minutes
-        $/x;
-        my ($yr, $mo, $day, $h, $m, $s, $tzs, $tzh, $tzm) = $str =~ $parser;
-        my $offset = $tzs . $tzh . $tzm;
-        return DateTime->new(
-            year      => $yr,
-            month     => $mo,
-            day       => $day,
-            hour      => $h,
-            minute    => $m,
-            second    => $s,
-            time_zone => $offset,
-        );
-    }
+        return DateTime::Format::ISO8601->parse_datetime(shift);
+     },
 );
 
 sub from_amazon {
@@ -56,21 +34,7 @@ my %to_map = (
         $int = 1 unless $int > 0;
         return $int;
     },
-    'datetime' => sub { 
-        my $dt     = shift;
-        my $tz     = $dt->time_zone;
-        my $offset = $tz->offset_for_datetime($dt);
-        my $neg    = $offset < 0;
-
-        $offset = -$offset if $neg;
-
-        my $minutes = $offset  / 60;
-        my $hours   = $minutes / 60;
-        $minutes   -= $hours   * 60;
-
-        my $offstr = sprintf '%s%02d:%02d', $neg ? '-' : '+', $hours, $minutes;
-        return $dt->strftime("%FT%T$offstr");
-    },
+    'datetime' => sub { shift->iso8601 }
 );
 
 sub to_amazon {
@@ -102,11 +66,6 @@ Converts from a perl datatype to a string for use as an MWS param.
 Converts from a string supplied by MWS to a perl datatype.
 
 =head1 TYPES
-
-=head2 HTTP-BODY
-
-Should be either a reference to a scalar containing the data to send,
-a string containing the filename of the file to read from, or a filehandle.
 
 =head2 string
 
