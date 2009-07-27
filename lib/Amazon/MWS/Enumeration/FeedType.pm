@@ -24,3 +24,61 @@ __PACKAGE__->define qw(
 );
 
 1;
+
+__END__
+
+=head1 NAME
+
+Amazon::MWS::Enumeration::FeedType
+
+=head1 CONSTANTS
+
+=over 4
+
+=item _POST_PRODUCT_DATA_
+
+=item _POST_PRODUCT_RELATIONSHIP_DATA_
+
+=item _POST_ITEM_DATA_
+
+=item _POST_PRODUCT_OVERRIDES_DATA_
+
+=item _POST_PRODUCT_IMAGE_DATA_
+
+=item _POST_PRODUCT_PRICING_DATA_
+
+=item _POST_INVENTORY_AVAILABILITY_DATA_
+
+=item _POST_ORDER_ACKNOWLEDGEMENT_DATA_
+
+=item _POST_ORDER_FULFILLMENT_DATA_
+
+=item _POST_PAYMENT_ADJUSTMENT_DATA_
+
+=item _POST_FLAT_FILE_LISTINGS_DATA_
+
+=item _POST_FLAT_FILE_ORDER_ACKNOWLEDGEMENT_DATA_
+
+=item _POST_FLAT_FILE_FULFILLMENT_DATA_
+
+=item _POST_FLAT_FILE_PAYMENT_ADJUSTMENT_DATA_
+
+=item _POST_FLAT_FILE_INVLOADER_DATA_
+
+=back
+
+=head1 SEE ALSO
+
+L<Amazon::MWS::Enumeration>
+
+=head1 AUTHOR
+
+Paul Driver C<< frodwith@cpan.org >>
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2009, Plain Black Corporation L<http://plainblack.com>.
+All rights reserved
+
+This module is free software; you can redistribute it and/or modify it under
+the same terms as Perl itself.  See L<perlartistic>.

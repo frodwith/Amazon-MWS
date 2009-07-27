@@ -674,3 +674,15 @@ The raw body is returned.
 =head2 GetReportScheduleCount
 
 =head2 UpdateReportAcknowledgements
+
+=head1 AUTHOR
+
+Paul Driver C<< frodwith@cpan.org >>
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2009, Plain Black Corporation L<http://plainblack.com>.
+All rights reserved
+
+This module is free software; you can redistribute it and/or modify it under
+the same terms as Perl itself.  See L<perlartistic>.
