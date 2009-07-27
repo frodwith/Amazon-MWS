@@ -46,24 +46,9 @@ misspell the rather long all-caps names.
 
 =head1 SYNOPSIS
 
-    package MyEnum;
+use Amazon::MWS::Enumeration::FeedType qw(:all);
 
-    use base 'Amazon::MWS::Enumeration';
-
-    __PACKAGE__->define qw(
-       VALUE1
-       VALUE2
-    );
-
-    # ... later ...
-    use MyEnum qw(VALUE1);
-    # or
-    use MyEnum qw(:all);
-    VALUE1 # returns an object that stringifies to "VALUE1"
-    # or
-    MyEnum->VALUE1
-    # or
-    MyEnum::VALUE1 # the same
+_POST_PRODUCT_DATA_ # no warnings or strict violations, checked for typos!
 
 =head1 METHODS
 
