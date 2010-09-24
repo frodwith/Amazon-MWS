@@ -173,7 +173,7 @@ sub define_api_method {
         if ($body) {
             $request->method('POST'); 
             $request->content($body);
-            $request->header('Content-MD5' => md5_base64($body));
+            $request->header('Content-MD5' => md5_base64($body) . '==');
             $request->content_type($args->{content_type});
         }
         else {
@@ -199,7 +199,7 @@ sub define_api_method {
 
         if (my $md5 = $response->header('Content-MD5')) {
             bad_checksum(response => $response) 
-                unless ($md5 eq md5_base64($content));
+                unless ($md5 eq md5_base64($content) . '==');
         }
 
         return $content if $spec->{raw_body};
