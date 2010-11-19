@@ -26,3 +26,4 @@ for my $req (@{$mws->GetReportRequestList(ReportRequestIdList => \@requests)->{R
         }
     }
 }
+

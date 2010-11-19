@@ -18,3 +18,4 @@ if (my $req_id = $req->{ReportRequestInfo}->[0]->{ReportRequestId}) {
     open my $req, "> request.${req_id}";
     close $req;
 }
+
