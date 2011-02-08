@@ -8,7 +8,10 @@ my $build = Module::Build->new(
     dist_abstract     => 'Perl interface to Amazon Marketplace Web Services',
 
     build_requires => {
-        'Test::More' => 0,
+        'Test::More'                => 0,
+        'Test::MockObject'          => 0,
+        'Test::MockObject::Extends' => 0,
+        'HTTP::Response'            => 0,
     },
 
     requires => {

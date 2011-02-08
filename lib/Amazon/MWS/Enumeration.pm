@@ -5,7 +5,10 @@ use warnings;
 
 use Exporter;
 
-use overload '""' => \&as_string;
+use overload (
+    '""'  => \&as_string,
+    'cmp' => sub { "$_[0]" cmp $_[1] },
+);
 
 sub as_string { 
     my $self = shift; 

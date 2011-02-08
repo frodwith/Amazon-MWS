@@ -155,12 +155,11 @@ sub define_api_method {
                 next;
             }
 
-            $value = to_amazon($type, $value);
             if ($type eq 'HTTP-BODY') {
                 $body = $value;
             }
             else {
-                $form{$name} = $value; 
+                $form{$name} = to_amazon($type, $value);
             }
         }
 
@@ -284,7 +283,7 @@ define_api_method SubmitFeed =>
         },
     },
     respond => sub {
-        my $root = shift;
+        my $root = shift->{FeedSubmissionInfo};
         convert($root, SubmittedDate => 'datetime');
         return $root;
     };
