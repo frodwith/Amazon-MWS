@@ -504,7 +504,7 @@ define_api_method ManageReportSchedule =>
     },
     respond => sub {
         my $root = shift;
-        convert($root, ScheduledDate => 'datetime');
+        convert_ReportSchedule($root);
         return $root;
     };
 
