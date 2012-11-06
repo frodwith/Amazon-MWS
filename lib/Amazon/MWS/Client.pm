@@ -11,7 +11,7 @@ use DateTime;
 use XML::Simple;
 use URI::Escape;
 use MIME::Base64;
-use Digest::HMAC_SHA1 qw(hmac_sha1);
+use Digest::SHA qw(hmac_sha256_base64);
 use HTTP::Request;
 use LWP::UserAgent;
 use Class::InsideOut qw(:std);
@@ -51,6 +51,7 @@ readonly access_key_id  => my %access_key_id;
 readonly secret_key     => my %secret_key;
 readonly merchant_id    => my %merchant_id;
 readonly marketplace_id => my %marketplace_id;
+readonly debugging      => my %debugging;
 
 sub force_array {
     my ($hash, $key) = @_;
@@ -129,7 +130,7 @@ sub define_api_method {
             Marketplace      => $self->marketplace_id,
             Version          => '2009-01-01',
             SignatureVersion => 2,
-            SignatureMethod  => 'HmacSHA1',
+            SignatureMethod  => 'HmacSHA256',
             Timestamp        => to_amazon('datetime', DateTime->now),
         );
 
@@ -176,11 +177,21 @@ sub define_api_method {
             $request->content_type($args->{content_type});
         }
         else {
-            $request->method('GET');
+            $request->method('POST');
         }
 
         $self->sign_request($request);
+
+        if($debugging{id $self}) {
+            print STDERR "REQUEST: ".$request->as_string."\n";
+        }
+
         my $response = $self->agent->request($request);
+
+        if($debugging{id $self}) {
+            print STDERR "RESPONSE: ".$response->as_string."\n";
+        }
+
         my $content  = $response->content;
 
         my $xs = XML::Simple->new( KeepRoot => 1 );
@@ -226,14 +237,26 @@ sub sign_request {
         "$param=$value";
     } sort keys %params;
 
+    ### print STDERR ">SIGNATURE: canonical=$canonical\n" if $debugging{id $self};
+
     my $string = $request->method . "\n"
         . $uri->authority . "\n"
         . $uri->path . "\n"
         . $canonical;
 
-    $params{Signature} = 
-        encode_base64(hmac_sha1($string, $self->secret_key), '');
+    ### print STDERR ">SIGNATURE: string=$string\n" if $debugging{id $self};
+
+    my $sig=hmac_sha256_base64($string, $self->secret_key);
+    $sig.='=' while length($sig) % 4;
+
+    ### print STDERR ">SIGNATURE: signature=$sig\n" if $debugging{id $self};
+
+    $params{Signature} = $sig;
+
     $uri->query_form(\%params);
+
+    ### print STDERR ">SIGNATURE: uri=".$uri->as_string."\n" if $debugging{id $self};
+
     $request->uri($uri);
 }
 
@@ -251,7 +274,12 @@ sub new {
 
     my $agent_string = "$appname/$version ($attr_str)";
     $agent{id $self} = LWP::UserAgent->new(agent => $agent_string);
-    $endpoint{id $self} = $opts->{endpoint} || 'https://mws.amazonaws.com/';
+
+    $endpoint{id $self} = $opts->{endpoint} || 'https://mws.amazonservices.com/';
+
+    # Signature verification depends on the slash
+    #
+    $endpoint{id $self}.='/' unless $endpoint{id $self}=~/\/$/;
 
     $access_key_id{id $self} = $opts->{access_key_id}
         or die 'No access key id';
@@ -264,6 +292,8 @@ sub new {
 
     $marketplace_id{id $self} = $opts->{marketplace_id}
         or die 'No marketplace id';
+
+    $debugging{id $self} = $opts->{debug} || $opts->{'debugging'} || 0;
 
     return $self;
 }
@@ -558,7 +588,7 @@ module.
 
 =head3 endpoint
 
-Where MWS lives.  Defaults to 'https://mws.amazonaws.com/'.
+Where MWS lives.  Defaults to 'https://mws.amazonservices.com/'.
 
 =head3 access_key_id
 
