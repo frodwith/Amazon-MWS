@@ -21,6 +21,19 @@ use Amazon::MWS::TypeMap qw(:all);
 my $baseEx;
 BEGIN { Readonly $baseEx => 'Amazon::MWS::Client::Exception' }
 
+# Data for automatic throttling. First is the maximum request quota,
+# second is the restore rate.
+
+my %throttleconfig=(
+    '*'                             => [ 10, 60 ],  # conservative default
+    GetFeedSubmissionList           => [ 10, 45 ],
+    GetFeedSubmissionResult         => [ 15, 60 ],
+    GetReport                       => [ 15, 60 ],
+    GetReportList                   => [ 10, 60 ],
+    ManageReportSchedule            => [ 10, 45 ],
+    UpdateReportAcknowledgements    => [ 10, 45 ],
+);
+
 use Exception::Class (
     $baseEx,
     "${baseEx}::MissingArgument" => {
@@ -51,6 +64,7 @@ readonly access_key_id  => my %access_key_id;
 readonly secret_key     => my %secret_key;
 readonly merchant_id    => my %merchant_id;
 readonly marketplace_id => my %marketplace_id;
+readonly throttling     => my %throttling;
 readonly debugging      => my %debugging;
 
 sub force_array {
@@ -133,6 +147,8 @@ sub define_api_method {
             SignatureMethod  => 'HmacSHA256',
             Timestamp        => to_amazon('datetime', DateTime->now),
         );
+
+        $self->throttle($method_name);
 
         foreach my $name (keys %$params) {
             my $param = $params->{$name};
@@ -260,6 +276,28 @@ sub sign_request {
     $request->uri($uri);
 }
 
+sub throttle {
+    my ($self,$action)=@_;
+
+    # TODO: Support bursts!
+
+    my $cf=$throttleconfig{$action} || $throttleconfig{'*'} || return;
+
+    my $td=$throttling{id $self}->{$action} || 0;
+
+    my $now=time;
+
+    my $wtime=$cf->[1] - ($now - $td);
+
+    if($wtime>0) {
+        print STDERR "..throttling $action for $wtime seconds\n" if $debugging{id $self};
+
+        sleep $wtime;
+    }
+
+    $throttling{id $self}->{$action}=$now;
+}
+
 sub new {
     my $class = shift;
     my $opts  = slurp_kwargs(@_);
@@ -294,6 +332,8 @@ sub new {
         or die 'No marketplace id';
 
     $debugging{id $self} = $opts->{debug} || $opts->{'debugging'} || 0;
+
+    $throttling{id $self} = { };
 
     return $self;
 }
