@@ -491,7 +491,7 @@ define_api_method GetReport =>
     raw_body   => 1,
     parameters => {
         ReportId => { 
-            type     => 'nonNegativeInteger',
+            type     => 'string',
             required => 1,
         }
     };
