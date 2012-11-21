@@ -31,7 +31,7 @@ my $build = Module::Build->new(
 
         'MIME::Base64'      => 0,
         'Digest::MD5'       => 0,
-        'Digest::HMAC_SHA1' => 0,
+        'Digest::SHA'       => 0,
     },
 );
 

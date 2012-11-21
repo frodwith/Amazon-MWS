@@ -3,7 +3,7 @@ package Amazon::MWS::Client;
 use warnings;
 use strict;
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 
 use URI;
 use Readonly;
@@ -11,7 +11,7 @@ use DateTime;
 use XML::Simple;
 use URI::Escape;
 use MIME::Base64;
-use Digest::HMAC_SHA1 qw(hmac_sha1);
+use Digest::SHA qw(hmac_sha256_base64);
 use HTTP::Request;
 use LWP::UserAgent;
 use Class::InsideOut qw(:std);
@@ -20,6 +20,19 @@ use Amazon::MWS::TypeMap qw(:all);
 
 my $baseEx;
 BEGIN { Readonly $baseEx => 'Amazon::MWS::Client::Exception' }
+
+# Data for automatic throttling. First is the maximum request quota,
+# second is the restore rate.
+
+my %throttleconfig=(
+    '*'                             => [ 10, 60 ],  # conservative default
+    GetFeedSubmissionList           => [ 10, 45 ],
+    GetFeedSubmissionResult         => [ 15, 60 ],
+    GetReport                       => [ 15, 60 ],
+    GetReportList                   => [ 10, 60 ],
+    ManageReportSchedule            => [ 10, 45 ],
+    UpdateReportAcknowledgements    => [ 10, 45 ],
+);
 
 use Exception::Class (
     $baseEx,
@@ -51,6 +64,8 @@ readonly access_key_id  => my %access_key_id;
 readonly secret_key     => my %secret_key;
 readonly merchant_id    => my %merchant_id;
 readonly marketplace_id => my %marketplace_id;
+readonly throttling     => my %throttling;
+readonly debugging      => my %debugging;
 
 sub force_array {
     my ($hash, $key) = @_;
@@ -129,9 +144,11 @@ sub define_api_method {
             Marketplace      => $self->marketplace_id,
             Version          => '2009-01-01',
             SignatureVersion => 2,
-            SignatureMethod  => 'HmacSHA1',
+            SignatureMethod  => 'HmacSHA256',
             Timestamp        => to_amazon('datetime', DateTime->now),
         );
+
+        $self->throttle($method_name);
 
         foreach my $name (keys %$params) {
             my $param = $params->{$name};
@@ -176,11 +193,21 @@ sub define_api_method {
             $request->content_type($args->{content_type});
         }
         else {
-            $request->method('GET');
+            $request->method('POST');
         }
 
         $self->sign_request($request);
+
+        if($debugging{id $self}) {
+            print STDERR "REQUEST: ".$request->as_string."\n";
+        }
+
         my $response = $self->agent->request($request);
+
+        if($debugging{id $self}) {
+            print STDERR "RESPONSE: ".$response->as_string."\n";
+        }
+
         my $content  = $response->content;
 
         my $xs = XML::Simple->new( KeepRoot => 1 );
@@ -226,15 +253,49 @@ sub sign_request {
         "$param=$value";
     } sort keys %params;
 
+    ### print STDERR ">SIGNATURE: canonical=$canonical\n" if $debugging{id $self};
+
     my $string = $request->method . "\n"
         . $uri->authority . "\n"
         . $uri->path . "\n"
         . $canonical;
 
-    $params{Signature} = 
-        encode_base64(hmac_sha1($string, $self->secret_key), '');
+    ### print STDERR ">SIGNATURE: string=$string\n" if $debugging{id $self};
+
+    my $sig=hmac_sha256_base64($string, $self->secret_key);
+    $sig.='=' while length($sig) % 4;
+
+    ### print STDERR ">SIGNATURE: signature=$sig\n" if $debugging{id $self};
+
+    $params{Signature} = $sig;
+
     $uri->query_form(\%params);
+
+    ### print STDERR ">SIGNATURE: uri=".$uri->as_string."\n" if $debugging{id $self};
+
     $request->uri($uri);
+}
+
+sub throttle {
+    my ($self,$action)=@_;
+
+    # TODO: Support bursts!
+
+    my $cf=$throttleconfig{$action} || $throttleconfig{'*'} || return;
+
+    my $td=$throttling{id $self}->{$action} || 0;
+
+    my $now=time;
+
+    my $wtime=$cf->[1] - ($now - $td);
+
+    if($wtime>0) {
+        print STDERR "..throttling $action for $wtime seconds\n" if $debugging{id $self};
+
+        sleep $wtime;
+    }
+
+    $throttling{id $self}->{$action}=$now;
 }
 
 sub new {
@@ -251,7 +312,12 @@ sub new {
 
     my $agent_string = "$appname/$version ($attr_str)";
     $agent{id $self} = LWP::UserAgent->new(agent => $agent_string);
-    $endpoint{id $self} = $opts->{endpoint} || 'https://mws.amazonaws.com/';
+
+    $endpoint{id $self} = $opts->{endpoint} || 'https://mws.amazonservices.com/';
+
+    # Signature verification depends on the slash
+    #
+    $endpoint{id $self}.='/' unless $endpoint{id $self}=~/\/$/;
 
     $access_key_id{id $self} = $opts->{access_key_id}
         or die 'No access key id';
@@ -264,6 +330,10 @@ sub new {
 
     $marketplace_id{id $self} = $opts->{marketplace_id}
         or die 'No marketplace id';
+
+    $debugging{id $self} = $opts->{debug} || $opts->{'debugging'} || 0;
+
+    $throttling{id $self} = { };
 
     return $self;
 }
@@ -461,7 +531,7 @@ define_api_method GetReport =>
     raw_body   => 1,
     parameters => {
         ReportId => { 
-            type     => 'nonNegativeInteger',
+            type     => 'string',
             required => 1,
         }
     };
@@ -474,7 +544,7 @@ define_api_method ManageReportSchedule =>
     },
     respond => sub {
         my $root = shift;
-        convert($root, ScheduledDate => 'datetime');
+        convert_ReportSchedule($root);
         return $root;
     };
 
@@ -558,7 +628,7 @@ module.
 
 =head3 endpoint
 
-Where MWS lives.  Defaults to 'https://mws.amazonaws.com/'.
+Where MWS lives.  Defaults to 'https://mws.amazonservices.com/'.
 
 =head3 access_key_id
 

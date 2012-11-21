@@ -5,3 +5,5 @@ MYMETA.*
 Build
 *.bak
 *.tar.gz
+MANIFEST
+blib/
