@@ -1,0 +1,7 @@
+/.idea
+/_build
+META.*
+MYMETA.*
+Build
+*.bak
+*.tar.gz
