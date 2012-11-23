@@ -62,7 +62,7 @@ readonly agent          => my %agent;
 readonly endpoint       => my %endpoint;
 readonly access_key_id  => my %access_key_id;
 readonly secret_key     => my %secret_key;
-readonly merchant_id    => my %merchant_id;
+readonly seller_id      => my %seller_id;
 readonly marketplace_id => my %marketplace_id;
 readonly throttling     => my %throttling;
 readonly debugging      => my %debugging;
@@ -140,9 +140,9 @@ sub define_api_method {
         my %form = (
             Action           => $method_name,
             AWSAccessKeyId   => $self->access_key_id,
-            Merchant         => $self->merchant_id,
-            Marketplace      => $self->marketplace_id,
-            Version          => '2009-01-01',
+            SellerId         => $self->seller_id,
+            MarketplaceId    => $self->marketplace_id,
+            Version          => '2011-10-01',
             SignatureVersion => 2,
             SignatureMethod  => 'HmacSHA256',
             Timestamp        => to_amazon('datetime', DateTime->now),
@@ -181,6 +181,7 @@ sub define_api_method {
         }
 
         my $uri = URI->new($self->endpoint);
+        $uri->path($spec->{path}.$form{Version}) if ($spec->{path});
         $uri->query_form(\%form);
 
         my $request = HTTP::Request->new;
@@ -193,7 +194,7 @@ sub define_api_method {
             $request->content_type($args->{content_type});
         }
         else {
-            $request->method('POST');
+            $request->method('GET');
         }
 
         $self->sign_request($request);
@@ -325,8 +326,8 @@ sub new {
     $secret_key{id $self} = $opts->{secret_key}
         or die 'No secret key';
 
-    $merchant_id{id $self} = $opts->{merchant_id}
-        or die 'No merchant id';
+    $seller_id{id $self} = $opts->{seller_id}
+        or die 'No seller id';
 
     $marketplace_id{id $self} = $opts->{marketplace_id}
         or die 'No marketplace id';
@@ -593,6 +594,21 @@ define_api_method UpdateReportAcknowledgements =>
         return $root;
     };
 
+define_api_method GetLowestOfferListingsForSKU =>
+    path => '/Products/',
+    parameters => {
+        SellerSKUList => {
+            type     => 'SellerSKUList',
+            required => 1,
+        },
+        ItemCondition => { type => 'string' },
+        ExcludeMe => { type => 'boolean' },
+    },
+    respond => sub {
+        my $root = shift;
+        return $root;
+    };
+
 1;
 
 __END__
@@ -638,9 +654,9 @@ Your AWS Access Key Id
 
 Your AWS Secret Access Key
 
-=head3 merchant_id
+=head3 seller_id
 
-Your Amazon Merchant ID
+Your Amazon Seller (Merchant) ID
 
 =head3 marketplace_id
 
@@ -743,6 +759,8 @@ The raw body is returned.
 =head2 GetReportScheduleCount
 
 =head2 UpdateReportAcknowledgements
+
+=head2 GetLowestOfferListingsForSKU
 
 =head1 AUTHOR
 
