@@ -7,3 +7,6 @@ Build
 *.tar.gz
 MANIFEST
 blib/
+/.project
+/.includepath
+/.settings
