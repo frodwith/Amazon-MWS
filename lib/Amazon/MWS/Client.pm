@@ -32,6 +32,7 @@ my %throttleconfig=(
     GetReportList                   => [ 10, 60 ],
     ManageReportSchedule            => [ 10, 45 ],
     UpdateReportAcknowledgements    => [ 10, 45 ],
+    GetLowestOfferListingsForSKU    => [ 20,  2 ],  # restore rate is 10 items every second
 );
 
 use Exception::Class (
@@ -606,6 +607,12 @@ define_api_method GetLowestOfferListingsForSKU =>
     },
     respond => sub {
         my $root = shift;
+        if (ref($root) ne 'ARRAY') {
+          $root = [ $root ];
+        }
+        foreach my $product (@$root) {
+          force_array($product->{Product}->{LowestOfferListings}, 'LowestOfferListing');
+        }
         return $root;
     };
 

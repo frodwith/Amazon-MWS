@@ -37,10 +37,6 @@ sub process_product {
   print $product->{SellerSKU}." lowest price ".$lowest."\n";
 }
 
-if (ref($req) eq 'ARRAY') {
-  foreach my $product (@$req) {
-    process_product($product);
-  }
-} else {
-  process_product($req);
+foreach my $product (@$req) {
+  process_product($product);
 }
