@@ -40,6 +40,9 @@
 
 # Avoid IDE files/dirs
 \B\.idea
+\B\.includepath
+\B\.project
+\B\.settings
 
 # Avoid OS-specific files/dirs
 #   Mac OSX metadata
@@ -50,3 +53,5 @@
 \bAmazon-MWS-[\d\.\_]+
 ^MYMETA\.yml$
 ^MYMETA\.json$
+^META\.yml$
+^META\.json$

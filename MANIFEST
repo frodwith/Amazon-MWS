@@ -1,19 +1,20 @@
 Build.PL
 examples/download-FBA-fulfillment-report.pl
+examples/get-lowest-offer.pl
 examples/request-FBA-fulfillment-report.pl
 INSTALL
 lib/Amazon/MWS/Client.pm
 lib/Amazon/MWS/Enumeration.pm
 lib/Amazon/MWS/Enumeration/FeedProcessingStatus.pm
 lib/Amazon/MWS/Enumeration/FeedType.pm
+lib/Amazon/MWS/Enumeration/IdType.pm
+lib/Amazon/MWS/Enumeration/ItemCondition.pm
 lib/Amazon/MWS/Enumeration/ReportProcessingStatus.pm
 lib/Amazon/MWS/Enumeration/ReportType.pm
 lib/Amazon/MWS/Enumeration/Schedule.pm
 lib/Amazon/MWS/TypeMap.pm
 MANIFEST			This list of files
 MANIFEST.SKIP
-META.json
-META.yml
 README
 t/enumeration.t
 t/SubmitFeed.t

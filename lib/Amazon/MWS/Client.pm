@@ -595,6 +595,23 @@ define_api_method UpdateReportAcknowledgements =>
         return $root;
     };
 
+define_api_method GetMatchingProductForId =>
+    path => '/Products/',
+    parameters => {
+        IdList => {
+            type     => 'IdList',
+            required => 1,
+        },
+        IdType => { type => 'string' },
+    },
+    respond => sub {
+        my $root = shift;
+        if (ref($root) ne 'ARRAY') {
+          $root = [ $root ];
+        }
+        return $root;
+    };
+
 define_api_method GetLowestOfferListingsForSKU =>
     path => '/Products/',
     parameters => {
