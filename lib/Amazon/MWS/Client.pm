@@ -3,7 +3,7 @@ package Amazon::MWS::Client;
 use warnings;
 use strict;
 
-our $VERSION = '0.1';
+our $VERSION = '0.5-SmartWarehousing';
 
 use URI;
 use Readonly;
@@ -11,7 +11,7 @@ use DateTime;
 use XML::Simple;
 use URI::Escape;
 use MIME::Base64;
-use Digest::HMAC_SHA1 qw(hmac_sha1);
+use Digest::SHA qw(hmac_sha256);
 use HTTP::Request;
 use LWP::UserAgent;
 use Class::InsideOut qw(:std);
@@ -20,6 +20,15 @@ use Amazon::MWS::TypeMap qw(:all);
 
 my $baseEx;
 BEGIN { Readonly $baseEx => 'Amazon::MWS::Client::Exception' }
+
+Readonly my $SERVICE_VERSIONS => {
+    'Orders' => q/2011-01-01/,
+    'OffAmazonPayments_Sandbox' => q/2013-01-01/,
+    'OffAmazonPayments' => q/2013-01-01/,
+    'FulfillmentInventory' => q/2010-10-01/,
+    'FulfillmentOutbound' => q/2010-10-01/,
+    'FulfillmentInbound' => q/2010-10-01/,
+};
 
 use Exception::Class (
     $baseEx,
@@ -50,7 +59,6 @@ readonly endpoint       => my %endpoint;
 readonly access_key_id  => my %access_key_id;
 readonly secret_key     => my %secret_key;
 readonly merchant_id    => my %merchant_id;
-readonly marketplace_id => my %marketplace_id;
 
 sub force_array {
     my ($hash, $key) = @_;
@@ -117,20 +125,21 @@ sub define_api_method {
     my $method_name = shift;
     my $spec        = slurp_kwargs(@_);
     my $params      = $spec->{parameters};
-
+    my $service     = $spec->{'service'} || '';
+    my $version     = $spec->{'version'} || $SERVICE_VERSIONS->{$service};
+    my $action      = $spec->{'action'};
     my $method = sub {
         my $self = shift;
         my $args = slurp_kwargs(@_);
         my $body;
         my %form = (
-            Action           => $method_name,
-            AWSAccessKeyId   => $self->access_key_id,
-            Merchant         => $self->merchant_id,
-            Marketplace      => $self->marketplace_id,
-            Version          => '2009-01-01',
-            SignatureVersion => 2,
-            SignatureMethod  => 'HmacSHA1',
-            Timestamp        => to_amazon('datetime', DateTime->now),
+            'Action'               => $action || $method_name,
+            'AWSAccessKeyId'       => $self->access_key_id,
+            'SellerId'             => $self->merchant_id,
+            'Version'              => $version || '2009-01-01',
+            'SignatureVersion'     => 2,
+            'SignatureMethod'      => 'HmacSHA256',
+            'Timestamp'            => to_amazon('datetime', DateTime->now),
         );
 
         foreach my $name (keys %$params) {
@@ -148,7 +157,10 @@ sub define_api_method {
             if ($type =~ /(\w+)List/) {
                 my $list_type = $1;
                 my $counter   = 1;
-                foreach my $sub_value (@$value) {
+                if (!ref $value) {
+                    $value = [$value];
+                }
+                foreach my $sub_value (@{$value}) {
                     my $listKey = "$name.$list_type." . $counter++;
                     $form{$listKey} = $sub_value;
                 }
@@ -162,22 +174,26 @@ sub define_api_method {
                 $form{$name} = to_amazon($type, $value);
             }
         }
-
         my $uri = URI->new($self->endpoint);
+        my $path = q{/};
+        if ($service && $service ne 'Feeds' && $service ne 'Reports') {
+            $path = join '/', $service, $form{'Version'};
+        }
+        
+        $uri->path($path);
         $uri->query_form(\%form);
 
         my $request = HTTP::Request->new;
         $request->uri($uri);
+        
+        $request->method('POST');
 
         if ($body) {
-            $request->method('POST'); 
             $request->content($body);
             $request->header('Content-MD5' => md5_base64($body) . '==');
-            $request->content_type($args->{content_type});
         }
-        else {
-            $request->method('GET');
-        }
+        
+        $request->content_type($args->{content_type} || 'application/x-www-form-urlencoded');
 
         $self->sign_request($request);
         my $response = $self->agent->request($request);
@@ -205,8 +221,8 @@ sub define_api_method {
 
         my $hash = $xs->xml_in($content);
 
-        my $root = $hash->{$method_name . 'Response'}
-            ->{$method_name . 'Result'};
+        my $root = $hash->{$form{'Action'} . 'Response'}
+            ->{$form{'Action'} . 'Result'};
 
         return $spec->{respond}->($root);
     };
@@ -232,7 +248,7 @@ sub sign_request {
         . $canonical;
 
     $params{Signature} = 
-        encode_base64(hmac_sha1($string, $self->secret_key), '');
+        encode_base64(hmac_sha256($string, $self->secret_key), '');
     $uri->query_form(\%params);
     $request->uri($uri);
 }
@@ -246,8 +262,8 @@ sub new {
     $attr->{Language} = 'Perl';
 
     my $attr_str = join ';', map { "$_=$attr->{$_}" } keys %$attr;
-    my $appname  = $opts->{Application} || 'Amazon::MWS::Client';
-    my $version  = $opts->{Version}     || $VERSION;
+    my $appname  = $opts->{Application} || $opts->{'application'}   || 'Amazon::MWS::Client';
+    my $version  = $opts->{Version}     || $opts->{'version'}       || $VERSION;
 
     my $agent_string = "$appname/$version ($attr_str)";
     $agent{id $self} = LWP::UserAgent->new(agent => $agent_string);
@@ -261,9 +277,6 @@ sub new {
 
     $merchant_id{id $self} = $opts->{merchant_id}
         or die 'No merchant id';
-
-    $marketplace_id{id $self} = $opts->{marketplace_id}
-        or die 'No marketplace id';
 
     return $self;
 }
@@ -359,6 +372,7 @@ define_api_method RequestReport =>
         StartDate => { type => 'datetime' },
         EndDate   => { type => 'datetime' },
     },
+    'path' => q{/},
     respond => sub {
         my $root = shift;
         convert_ReportRequestInfo($root);
@@ -523,6 +537,64 @@ define_api_method UpdateReportAcknowledgements =>
         return $root;
     };
 
+define_api_method 'ListOrders' => 
+    'parameters' => {
+        'MarketplaceId' => {
+            'type' => 'IdList',
+            'required' => 1,
+        },
+        'CreatedAfter' => { 
+            'type' => 'datetime', 
+        },
+        'CreatedBefore' => { 
+            'type' => 'datetime', 
+        },
+        'LastUpdatedAfter' => { 
+            'type' => 'datetime', 
+        },
+        'LastUpdatedBefore' => { 
+            'type' => 'datetime', 
+        },
+        'OrderStatus' => {
+            'type' => 'StatusList',
+        },
+        'FulfillmentChannel' => {
+            'type' => 'ChannelList',
+        },
+        'SellerOrderID' => {
+            'type' => 'string',
+        },
+        'BuyerEmail' => {
+            'type' => 'string',
+        },
+        'PaymentMethod' => {
+            'type' => 'MethodList',
+        },
+        'TFMShipmentStatus' => {
+            'type' => 'StatusList',
+        },
+        'MaxResultsPerPage' => {
+            'type' => 'string',
+        },
+    },
+    'version' => q/2011-01-01/,
+    'service' => q/Orders/,
+    respond => sub {
+        return @{$_[0]->{'Orders'}{'Order'}}
+    };
+
+for my $service (qw/FulfillmentInbound FulfillmentOutbound FulfillmentInventory Orders Products Recommendations Sellers Subscriptions OffAmazonPayments OffAmazonPayments_Sandbox/) {
+    my $method = qq{Get${service}ServiceStatus};
+    define_api_method $method => 
+        'parameters' => {},
+        'service' => $service,
+        'action' => q/GetServiceStatus/,
+        'version' => $SERVICE_VERSIONS->{$service},
+        'respond' => sub {
+            return $_[0];
+        };
+}
+
 1;
 
 __END__
@@ -542,39 +614,39 @@ entire interface can be found at L<https://mws.amazon.com/docs/devGuide>.
 
 Constructs a new client object.  Takes the following keyword arguments:
 
-=head3 agent_attributes
+=over 4
+
+=item agent_attributes
 
 An attributes you would like to add (besides language=Perl) to the user agent
 string, as a hashref.
 
-=head3 application
+=item application
 
 The name of your application.  Defaults to 'Amazon::MWS::Client'
 
-=head3 version
+=item version
 
 The version of your application.  Defaults to the current version of this
 module.
 
-=head3 endpoint
+=item endpoint
 
 Where MWS lives.  Defaults to 'https://mws.amazonaws.com/'.
 
-=head3 access_key_id
+=item access_key_id
 
 Your AWS Access Key Id
 
-=head3 secret_key
+=item secret_key
 
 Your AWS Secret Access Key
 
-=head3 merchant_id
+=item merchant_id
 
 Your Amazon Merchant ID
 
-=head3 marketplace_id
-
-The marketplace id for the calls being made by this object.
+=back
 
 =head1 EXCEPTIONS
 
@@ -683,5 +755,5 @@ Paul Driver C<< frodwith@cpan.org >>
 Copyright (c) 2009, Plain Black Corporation L<http://plainblack.com>.
 All rights reserved
 
-This module is free software; you can redistribute it and/or modify it under
+his module is free software; you can redistribute it and/or modify it under
 the same terms as Perl itself.  See L<perlartistic>.
