@@ -35,6 +35,8 @@ Readonly my $SERVICE_VERSIONS => {
 
 my %throttleconfig=(
     '*'                             => [ 10, 60 ],  # conservative default
+    'ListOrders'                    => [  6, 60 ],  # max quota of 6, restore rate is one / minute
+    'ListOrderItems'                => [ 30,  2 ],  # max quota of 30, restore rate is one / 2 s
     GetFeedSubmissionList           => [ 10, 45 ],
     GetFeedSubmissionResult         => [ 15, 60 ],
     GetReport                       => [ 15, 60 ],
@@ -72,7 +74,6 @@ readonly agent          => my %agent;
 readonly endpoint       => my %endpoint;
 readonly access_key_id  => my %access_key_id;
 readonly secret_key     => my %secret_key;
-readonly merchant_id    => my %merchant_id;
 readonly seller_id      => my %seller_id;
 readonly marketplace_id => my %marketplace_id;
 readonly throttling     => my %throttling;
@@ -154,13 +155,19 @@ sub define_api_method {
         my %form = (
             'Action'               => $action || $method_name,
             'AWSAccessKeyId'       => $self->access_key_id,
-            'SellerId'             => $self->merchant_id,
+            'SellerId'             => $self->seller_id,
             'MarketplaceId'        => $self->marketplace_id,
             'Version'              => $version || '2009-01-01',
             'SignatureVersion'     => 2,
             'SignatureMethod'      => 'HmacSHA256',
             'Timestamp'            => to_amazon('datetime', DateTime->now),
         );
+
+        # This is hacky.  Some API calls - in particular ListOrders - want marketplace ID as a list.
+        if ($params->{'MarketplaceId'}) {
+            delete $form{'MarketplaceId'};
+            $args->{'MarketplaceId'} = $self->marketplace_id;
+        } 
 
         $self->throttle($method_name);
 
@@ -310,6 +317,7 @@ sub throttle {
     }
 
     $throttling{id $self}->{$action}=$now;
+    1;
 }
 
 sub new {
@@ -614,6 +622,9 @@ define_api_method UpdateReportAcknowledgements =>
 
 define_api_method 'ListOrders' => 
     'parameters' => {
+        'MarketplaceId' => {
+            'type' => 'IdList',
+        },
         'CreatedAfter' => { 
             'type' => 'datetime', 
         },
