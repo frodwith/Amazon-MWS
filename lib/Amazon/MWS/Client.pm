@@ -11,7 +11,11 @@ use DateTime;
 use XML::Simple;
 use URI::Escape;
 use MIME::Base64;
+<<<<<<< HEAD
 use Digest::SHA qw(hmac_sha256);
+=======
+use Digest::SHA qw(hmac_sha256_base64);
+>>>>>>> bpuklich/master
 use HTTP::Request;
 use LWP::UserAgent;
 use Class::InsideOut qw(:std);
@@ -29,6 +33,20 @@ Readonly my $SERVICE_VERSIONS => {
     'FulfillmentOutbound' => q/2010-10-01/,
     'FulfillmentInbound' => q/2010-10-01/,
 };
+
+# Data for automatic throttling. First is the maximum request quota,
+# second is the restore rate.
+
+my %throttleconfig=(
+    '*'                             => [ 10, 60 ],  # conservative default
+    GetFeedSubmissionList           => [ 10, 45 ],
+    GetFeedSubmissionResult         => [ 15, 60 ],
+    GetReport                       => [ 15, 60 ],
+    GetReportList                   => [ 10, 60 ],
+    ManageReportSchedule            => [ 10, 45 ],
+    UpdateReportAcknowledgements    => [ 10, 45 ],
+    GetLowestOfferListingsForSKU    => [ 20,  2 ],  # restore rate is 10 items every second
+);
 
 use Exception::Class (
     $baseEx,
@@ -59,6 +77,11 @@ readonly endpoint       => my %endpoint;
 readonly access_key_id  => my %access_key_id;
 readonly secret_key     => my %secret_key;
 readonly merchant_id    => my %merchant_id;
+readonly seller_id      => my %seller_id;
+readonly marketplace_id => my %marketplace_id;
+readonly throttling     => my %throttling;
+readonly debugging      => my %debugging;
+
 
 sub force_array {
     my ($hash, $key) = @_;
@@ -136,11 +159,14 @@ sub define_api_method {
             'Action'               => $action || $method_name,
             'AWSAccessKeyId'       => $self->access_key_id,
             'SellerId'             => $self->merchant_id,
+            'MarketplaceId'        => $self->marketplace_id,
             'Version'              => $version || '2009-01-01',
             'SignatureVersion'     => 2,
             'SignatureMethod'      => 'HmacSHA256',
             'Timestamp'            => to_amazon('datetime', DateTime->now),
         );
+
+        $self->throttle($method_name);
 
         foreach my $name (keys %$params) {
             my $param = $params->{$name};
@@ -196,7 +222,17 @@ sub define_api_method {
         $request->content_type($args->{content_type} || 'application/x-www-form-urlencoded');
 
         $self->sign_request($request);
+
+        if($debugging{id $self}) {
+            print STDERR "REQUEST: ".$request->as_string."\n";
+        }
+
         my $response = $self->agent->request($request);
+
+        if($debugging{id $self}) {
+            print STDERR "RESPONSE: ".$response->as_string."\n";
+        }
+
         my $content  = $response->content;
 
         my $xs = XML::Simple->new( KeepRoot => 1 );
@@ -242,15 +278,42 @@ sub sign_request {
         "$param=$value";
     } sort keys %params;
 
+    ### print STDERR ">SIGNATURE: canonical=$canonical\n" if $debugging{id $self};
+
     my $string = $request->method . "\n"
         . $uri->authority . "\n"
         . $uri->path . "\n"
         . $canonical;
 
-    $params{Signature} = 
+    $params{'Signature'} = 
         encode_base64(hmac_sha256($string, $self->secret_key), '');
     $uri->query_form(\%params);
+
+    ### print STDERR ">SIGNATURE: uri=".$uri->as_string."\n" if $debugging{id $self};
+
     $request->uri($uri);
+}
+
+sub throttle {
+    my ($self,$action)=@_;
+
+    # TODO: Support bursts!
+
+    my $cf=$throttleconfig{$action} || $throttleconfig{'*'} || return;
+
+    my $td=$throttling{id $self}->{$action} || 0;
+
+    my $now=time;
+
+    my $wtime=$cf->[1] - ($now - $td);
+
+    if($wtime>0) {
+        print STDERR "..throttling $action for $wtime seconds\n" if $debugging{id $self};
+
+        sleep $wtime;
+    }
+
+    $throttling{id $self}->{$action}=$now;
 }
 
 sub new {
@@ -267,7 +330,12 @@ sub new {
 
     my $agent_string = "$appname/$version ($attr_str)";
     $agent{id $self} = LWP::UserAgent->new(agent => $agent_string);
-    $endpoint{id $self} = $opts->{endpoint} || 'https://mws.amazonaws.com/';
+
+    $endpoint{id $self} = $opts->{endpoint} || 'https://mws.amazonservices.com/';
+
+    # Signature verification depends on the slash
+    #
+    $endpoint{id $self}.='/' unless $endpoint{id $self}=~/\/$/;
 
     $access_key_id{id $self} = $opts->{access_key_id}
         or die 'No access key id';
@@ -275,8 +343,15 @@ sub new {
     $secret_key{id $self} = $opts->{secret_key}
         or die 'No secret key';
 
-    $merchant_id{id $self} = $opts->{merchant_id}
-        or die 'No merchant id';
+    $seller_id{id $self} = $opts->{'seller_id'} || $opts->{'merchant_id'}
+        or die 'No seller id';
+
+    $marketplace_id{id $self} = $opts->{marketplace_id}
+        or die 'No marketplace id';
+
+    $debugging{id $self} = $opts->{debug} || $opts->{'debugging'} || 0;
+
+    $throttling{id $self} = { };
 
     return $self;
 }
@@ -479,7 +554,7 @@ define_api_method GetReport =>
     raw_body   => 1,
     parameters => {
         ReportId => { 
-            type     => 'nonNegativeInteger',
+            type     => 'string',
             required => 1,
         }
     };
@@ -492,7 +567,7 @@ define_api_method ManageReportSchedule =>
     },
     respond => sub {
         my $root = shift;
-        convert($root, ScheduledDate => 'datetime');
+        convert_ReportSchedule($root);
         return $root;
     };
 
@@ -598,6 +673,46 @@ define_api_method 'ListOrderItems' =>
         return @{$_[0]->{'OrderItems'}{'OrderItem'}};
     };
 
+define_api_method GetMatchingProductForId =>
+    path => '/Products/',
+    parameters => {
+        IdList => {
+            type     => 'IdList',
+            required => 1,
+        },
+        IdType => { type => 'string' },
+    },
+    respond => sub {
+        my $root = shift;
+        if (ref($root) ne 'ARRAY') {
+          $root = [ $root ];
+        }
+        return $root;
+    };
+
+define_api_method GetLowestOfferListingsForSKU =>
+    path => '/Products/',
+    parameters => {
+        SellerSKUList => {
+            type     => 'SellerSKUList',
+            required => 1,
+        },
+        ItemCondition => { type => 'string' },
+        ExcludeMe => { type => 'boolean' },
+    },
+    respond => sub {
+        my $root = shift;
+        if (ref($root) ne 'ARRAY') {
+          $root = [ $root ];
+        }
+        foreach my $product (@$root) {
+          force_array($product->{Product}->{LowestOfferListings}, 'LowestOfferListing');
+        }
+        return $root;
+    };
+
+# Add service status methods for all services that support it.
+# Methods take the form 'Get' + service name + 'ServiceStatus', but call the correct URL
 for my $service (qw/FulfillmentInbound FulfillmentOutbound FulfillmentInventory Orders Products Recommendations Sellers Subscriptions OffAmazonPayments OffAmazonPayments_Sandbox/) {
     my $method = qq{Get${service}ServiceStatus};
     define_api_method $method => 
@@ -647,7 +762,7 @@ module.
 
 =item endpoint
 
-Where MWS lives.  Defaults to 'https://mws.amazonaws.com/'.
+Where MWS lives.  Defaults to 'https://mws.amazonservices.com/'.
 
 =item access_key_id
 
@@ -659,7 +774,11 @@ Your AWS Secret Access Key
 
 =item merchant_id
 
-Your Amazon Merchant ID
+DEPRECATED.  Your Amazon Seller (Merchant) ID
+
+=item seller_id
+
+Your Amazon Seller (Merchant) ID
 
 =back
 
@@ -761,9 +880,19 @@ The raw body is returned.
 
 =head2 UpdateReportAcknowledgements
 
+=head2 GetLowestOfferListingsForSKU
+
+=head2 ListOrders
+
+=head2 ListOrderItems
+
 =head1 AUTHOR
 
 Paul Driver C<< frodwith@cpan.org >>
+
+Modified by Blayne Puklich
+ 
+Further modified by Kit Peters C<< kitp@smartwarehousing.com >>
 
 =head1 LICENCE AND COPYRIGHT
 
