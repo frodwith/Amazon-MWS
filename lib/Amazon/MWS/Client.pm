@@ -294,6 +294,10 @@ define_api_method SubmitFeed =>
         PurgeAndReplace => {
             type     => 'boolean',
         },
+        'content_type' => {
+            'type'      => 'string',
+            'required'  => 1,
+        },
     },
     respond => sub {
         my $root = shift->{FeedSubmissionInfo};
@@ -577,10 +581,21 @@ define_api_method 'ListOrders' =>
             'type' => 'string',
         },
     },
-    'version' => q/2011-01-01/,
     'service' => q/Orders/,
     respond => sub {
         return @{$_[0]->{'Orders'}{'Order'}}
+    };
+
+define_api_method 'ListOrderItems' => 
+    'parameters' => {
+        'AmazonOrderId' => {
+            'type' => 'string',
+            'required' => 1,
+        },
+    },
+    'service' => q/Orders/,
+    'respond' => sub {
+        return @{$_[0]->{'OrderItems'}{'OrderItem'}};
     };
 
 for my $service (qw/FulfillmentInbound FulfillmentOutbound FulfillmentInventory Orders Products Recommendations Sellers Subscriptions OffAmazonPayments OffAmazonPayments_Sandbox/) {
