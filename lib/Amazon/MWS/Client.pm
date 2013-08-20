@@ -614,10 +614,6 @@ define_api_method UpdateReportAcknowledgements =>
 
 define_api_method 'ListOrders' => 
     'parameters' => {
-        'MarketplaceId' => {
-            'type' => 'IdList',
-            'required' => 1,
-        },
         'CreatedAfter' => { 
             'type' => 'datetime', 
         },
