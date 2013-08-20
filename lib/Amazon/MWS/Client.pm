@@ -11,11 +11,7 @@ use DateTime;
 use XML::Simple;
 use URI::Escape;
 use MIME::Base64;
-<<<<<<< HEAD
 use Digest::SHA qw(hmac_sha256);
-=======
-use Digest::SHA qw(hmac_sha256_base64);
->>>>>>> bpuklich/master
 use HTTP::Request;
 use LWP::UserAgent;
 use Class::InsideOut qw(:std);
