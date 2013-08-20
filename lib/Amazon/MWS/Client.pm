@@ -893,9 +893,11 @@ The raw body is returned.
 
 Paul Driver C<< frodwith@cpan.org >>
 
-Modified by Blayne Puklich
+=head1 CONTRIBUTORS 
+
+Blayne Puklich C<< blayne@excelcycle.com >>
  
-Further modified by Kit Peters C<< kitp@smartwarehousing.com >>
+Kit Peters C<< kitp@smartwarehousing.com >>
 
 =head1 LICENCE AND COPYRIGHT
 
