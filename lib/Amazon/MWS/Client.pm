@@ -661,7 +661,7 @@ define_api_method 'ListOrders' =>
     },
     'service' => q/Orders/,
     respond => sub {
-        my $root = $_->[0]->{'Orders'}{'Order'};
+        my $root = $_[0]->{'Orders'}{'Order'};
         if (ref $root eq 'ARRAY') {
             return  @{$root};
         }
