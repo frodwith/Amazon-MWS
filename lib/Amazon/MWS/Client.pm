@@ -682,7 +682,13 @@ define_api_method 'ListOrderItems' =>
     },
     'service' => q/Orders/,
     'respond' => sub {
-        return @{$_[0]->{'OrderItems'}{'OrderItem'}};
+        my $items = $_[0]->{'OrderItems'}{'OrderItem'};
+        if (ref $items eq 'ARRAY') {
+            return @{$items};
+        }
+        else {
+            return $items;
+        }
     };
 
 define_api_method GetMatchingProductForId =>
