@@ -3,7 +3,7 @@ package Amazon::MWS::Client;
 use warnings;
 use strict;
 
-our $VERSION = '0.5-SmartWarehousing';
+our $VERSION = '0.5';
 
 use URI;
 use Readonly;
