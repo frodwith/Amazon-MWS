@@ -38,6 +38,12 @@
 \.#
 \.rej$
 
+# Avoid IDE files/dirs
+\B\.idea
+\B\.includepath
+\B\.project
+\B\.settings
+
 # Avoid OS-specific files/dirs
 #   Mac OSX metadata
 \B\.DS_Store
@@ -45,3 +51,7 @@
 \B\._
 # Avoid archives of this distribution
 \bAmazon-MWS-[\d\.\_]+
+^MYMETA\.yml$
+^MYMETA\.json$
+^META\.yml$
+^META\.json$

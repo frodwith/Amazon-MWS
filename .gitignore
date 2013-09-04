@@ -1,0 +1,12 @@
+/.idea
+/_build
+META.*
+MYMETA.*
+Build
+*.bak
+*.tar.gz
+MANIFEST
+blib/
+/.project
+/.includepath
+/.settings

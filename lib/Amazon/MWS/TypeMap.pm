@@ -34,7 +34,20 @@ my %to_map = (
         $int = 1 unless $int > 0;
         return $int;
     },
-    'datetime' => sub { shift->iso8601 }
+    'datetime' => sub { 
+        my $arg = shift;
+        my $is_datetime = 0;
+        if (ref $arg) {
+            $is_datetime = eval {
+                $arg->isa('DateTime');
+            };
+            # any exception here would indicate that the ref in quetion was not a DateTime, so no need to check it.
+        }
+        if ( ! $is_datetime ) {
+            $arg = DateTime::Format::ISO8601->parse_datetime($arg);
+        }
+        return $arg->iso8601 
+    },
 );
 
 sub to_amazon {
