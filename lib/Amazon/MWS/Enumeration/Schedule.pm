@@ -5,7 +5,7 @@ use warnings;
 
 use base qw(Amazon::MWS::Enumeration);
 
-__PACKAGE__->define qw(
+__PACKAGE__->define (qw(
     _15_MINUTES_
     _30_MINUTES_
     _1_HOUR_
@@ -21,7 +21,7 @@ __PACKAGE__->define qw(
     _15_DAYS_
     _30_DAYS_
     _NEVER_
-);
+));
 
 1;
 

@@ -3,7 +3,7 @@ package Amazon::MWS::Client;
 use warnings;
 use strict;
 
-our $VERSION = '0.2';
+our $VERSION = '0.3';
 
 use URI;
 use Readonly;
@@ -96,7 +96,7 @@ sub convert_FeedSubmissionInfo {
 }
 
 sub convert_ReportRequestInfo {
-    my $root = shift; 
+    my $root = shift;
     force_array($root, 'ReportRequestInfo');
 
     foreach my $info (@{ $root->{ReportRequestInfo} }) {
@@ -187,7 +187,7 @@ sub define_api_method {
         $request->uri($uri);
 
         if ($body) {
-            $request->method('POST'); 
+            $request->method('POST');
             $request->content($body);
             $request->header('Content-MD5' => md5_base64($body) . '==');
             $request->content_type($args->{content_type});
@@ -224,7 +224,7 @@ sub define_api_method {
         }
 
         if (my $md5 = $response->header('Content-MD5')) {
-            bad_checksum(response => $response) 
+            bad_checksum(response => $response)
                 unless ($md5 eq md5_base64($content) . '==');
         }
 
@@ -375,7 +375,7 @@ define_api_method GetFeedSubmissionList =>
     };
 
 define_api_method GetFeedSubmissionListByNextToken =>
-    parameters => { 
+    parameters => {
         NextToken => {
             type     => 'string',
             required => 1,
@@ -414,7 +414,7 @@ define_api_method CancelFeedSubmissions =>
 define_api_method GetFeedSubmissionResult =>
     raw_body   => 1,
     parameters => {
-        FeedSubmissionId => { 
+        FeedSubmissionId => {
             type     => 'string',
             required => 1,
         },
@@ -453,7 +453,7 @@ define_api_method GetReportRequestList =>
 
 define_api_method GetReportRequestListByNextToken =>
     parameters => {
-        NextToken => { 
+        NextToken => {
             required => 1,
             type      => 'string',
         },
@@ -530,7 +530,7 @@ define_api_method GetReportCount =>
 define_api_method GetReport =>
     raw_body   => 1,
     parameters => {
-        ReportId => { 
+        ReportId => {
             type     => 'string',
             required => 1,
         }
@@ -581,7 +581,7 @@ define_api_method GetReportScheduleCount =>
 
 define_api_method UpdateReportAcknowledgements =>
     parameters => {
-        ReportIdList => { 
+        ReportIdList => {
             type     => 'IdList',
             required => 1,
         },
@@ -676,14 +676,14 @@ this exception will be thrown.  The response can be found in $e->response.
 
 The following methods may be called on objects of this class.  All concerns
 (such as authentication) which are common to every request are handled by this
-class.  
+class.
 
 Enumerated values may be specified as strings or as constants from the
-Amazon::MWS::Enumeration packages for compile time checking.  
+Amazon::MWS::Enumeration packages for compile time checking.
 
 All parameters to individual API methods may be specified either as name-value
 pairs in the argument string or as hashrefs, and should have the same names as
-specified in the API documentation.  
+specified in the API documentation.
 
 Return values will be hashrefs with keys as specified in the 'Response
 Elements' section of the API documentation unless otherwise noted.
