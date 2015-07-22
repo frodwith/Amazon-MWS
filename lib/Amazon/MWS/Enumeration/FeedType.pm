@@ -5,7 +5,7 @@ use warnings;
 
 use base qw(Amazon::MWS::Enumeration);
 
-__PACKAGE__->define qw(
+__PACKAGE__->define (qw(
     _POST_PRODUCT_DATA_
     _POST_PRODUCT_RELATIONSHIP_DATA_
     _POST_ITEM_DATA_
@@ -21,7 +21,7 @@ __PACKAGE__->define qw(
     _POST_FLAT_FILE_FULFILLMENT_DATA_
     _POST_FLAT_FILE_PAYMENT_ADJUSTMENT_DATA_
     _POST_FLAT_FILE_INVLOADER_DATA_
-);
+));
 
 1;
 

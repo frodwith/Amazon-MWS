@@ -7,11 +7,11 @@ BEGIN {
     package TestEnum;
 
     use base 'Amazon::MWS::Enumeration';
-    TestEnum->define qw(
+    TestEnum->define (qw(
         Foo
         Bar
         Baz
-    );
+    ));
 } 
 
 package indie;
